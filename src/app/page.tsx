@@ -112,14 +112,14 @@ export default function LoginPage() {
 
   return (
     // 1. FIX: Changed bg-[#050505] to bg-background, text-white to text-foreground
-    <main className="min-h-screen bg-background px-8 py-12 text-foreground flex items-center justify-center transition-colors duration-300">
+    <main className="min-h-screen bg-background  px-2 py-2 md:px-6 md:py-9 lg:px-8 lg:py-12 text-foreground flex items-center justify-center transition-colors duration-300">
       <div className="w-full max-w-7xl animate-in fade-in slide-in-from-bottom-8 duration-1000">
         
         {/* 2. FIX: Used bg-card/bg-popover instead of radial gradients, removed hardcoded borders */}
-        <section className="rounded-[34px] border border-border bg-card/50 px-10 py-12 shadow-2xl backdrop-blur-sm dark:bg-[radial-gradient(circle_at_top,_#111,_#050505)]">
-          <header className="mb-10 flex items-center justify-between">
-            <h1 className="text-3xl font-bold tracking-tight">HealthMon</h1>
-            <p className="text-sm italic text-slate-600 dark:text-slate-300 text-center max-w-xs">
+        <section className="rounded-[20px] md:rounded-[34px] border border-border bg-card/50 px-2 md:px-8 lg:px-10 py-4 md:py-9 lg:py-12 shadow-2xl backdrop-blur-sm dark:bg-[radial-gradient(circle_at_top,_#111,_#050505)]">
+          <header className="mb-5 md:mb-10 flex items-center justify-between">
+            <h1 className=" text-xl md:text-2xl lg:text-3xl font-bold tracking-tight">HealthMon</h1>
+            <p className="text-sm italic hidden md:block text-slate-600 dark:text-slate-300 text-center ">
               {quote}
             </p>
             {/* Optional: Add Theme Toggle here if you want to test it */}
@@ -127,6 +127,10 @@ export default function LoginPage() {
                 <ModeToggle/>
             </div>
           </header>
+
+          <p className="text-sm italic md:hidden text-slate-600 dark:text-slate-300 text-center mb-2.5">
+            {quote}
+          </p>
 
           <div className="grid gap-8 md:grid-cols-2">
             {/* 3. FIX: Changed bg-black/40 to bg-muted/30 or bg-secondary */}
@@ -144,13 +148,13 @@ export default function LoginPage() {
               ))}
             </div>
 
-            <div className="rounded-[32px] border border-border bg-secondary/20 p-8 animate-in fade-in slide-in-from-right-4 duration-700 delay-300">
-              <div className="mb-12 flex items-center justify-between text-3xl text-muted-foreground">
-                <span className="font-light italic">Secure Access</span>
+            <div className="rounded-[15px] md:rounded-[32px] border border-border bg-secondary/20 p-2 md:p-8 animate-in fade-in slide-in-from-right-4 duration-700 delay-300">
+              <div className="mb-3  md:mb-12 flex items-center justify-between text-3xl md:text-3xl text-muted-foreground">
+                <span className="font-light">Secure Access</span>
               </div>
 
               <form className="flex flex-col gap-6 text-lg text-foreground">
-                <label className="space-y-3">
+                <label className="space-y-1 md:space-y-3">
                   <span className="block font-medium">Username:</span>
                   {/* 5. FIX: Changed input styles to use border-input and bg-background */}
                   <input
@@ -160,7 +164,7 @@ export default function LoginPage() {
                   />
                 </label>
 
-                <label className="space-y-3">
+                <label className="space-y-1 md:space-y-3">
                   <span className="block font-medium">Password:</span>
                   <input
                     type="password"

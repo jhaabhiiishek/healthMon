@@ -83,6 +83,39 @@ const SelectField = ({ label, id, value, onChange, options }: { label: string; i
   </div>
 );
 
+const GYM_QUOTES = [
+  "The only bad workout is the one that didn't happen.",
+  "Sore today, strong tomorrow.",
+  "Don't wish for it, work for it.",
+  "Your body can stand almost anything. It’s your mind that you have to convince.",
+  "Motivation is what gets you started. Habit is what keeps you going.",
+  "Success starts with self-discipline.",
+  "Sweat is just fat crying.",
+  "Respect your body. It’s the only one you get.",
+  "Focus on your goal. Don't look in any direction but ahead.",
+  "Pain is temporary. Quitting lasts forever.",
+  "Stronger than yesterday.",
+  "You don't find willpower, you create it.",
+  "Excuses don't burn calories.",
+  "Discipline is doing what needs to be done, even if you don't want to.",
+  "Fall in love with the process, and the results will come."
+];
+const getDailyQuote = () => {
+  const date = new Date();
+  // Create a unique seed for the day (e.g., 2023-10-27)
+  const dateString = date.toDateString();
+  
+  // Simple hash function to get a number from the string
+  let hash = 0;
+  for (let i = 0; i < dateString.length; i++) {
+    hash = dateString.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  
+  // Use absolute value of hash to pick an index
+  const index = Math.abs(hash) % GYM_QUOTES.length;
+  return GYM_QUOTES[index];
+};
+
 export default function DetailsPage() {
   const [formData, setFormData] = useState(initialFormState);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -95,6 +128,7 @@ export default function DetailsPage() {
   const [enterDayProgress, setEnterDayProgress] = useState<boolean>(true);
   const [progressModalDate, setProgressModalDate] = useState<string | null>(null)
   const [completedDays, setCompletedDays] = useState<Date[]>([]);
+  const quote = getDailyQuote();
 
   useEffect(() => {
     // Ensure logic runs on client side
@@ -225,13 +259,16 @@ export default function DetailsPage() {
 
   return (
     // 3. FIX: Main background uses bg-background and text-foreground
-    <main className="min-h-screen bg-background px-8 py-12 text-foreground flex items-center justify-center transition-colors duration-300">
+    <main className="min-h-screen bg-background  px-2 py-2 md:px-6 md:py-9 lg:px-8 lg:py-12 text-foreground flex items-center justify-center transition-colors duration-300">
       <div className="w-full max-w-7xl duration-1000">
         
         {/* 4. FIX: Main Card uses bg-card/popover. Dark mode keeps the cool gradient via 'dark:' modifier */}
-        <section className="rounded-[34px] border border-border bg-card/50 px-10 py-12 shadow-2xl backdrop-blur-sm dark:bg-[radial-gradient(circle_at_top,_#111,_#050505)]">
-          <header className="mb-10 flex items-center justify-between">
+        <section className="rounded-[20px] md:rounded-[34px] border border-border bg-card/50 px-2 md:px-8 lg:px-10 py-4 md:py-9 lg:py-12 shadow-2xl backdrop-blur-sm dark:bg-[radial-gradient(circle_at_top,_#111,_#050505)]">
+          <header className="mb-5 md:mb-10 flex items-center justify-between">
             <h1 className="text-3xl font-bold tracking-tight">HealthMon</h1>
+            <p className="text-sm italic hidden md:block text-slate-600 dark:text-slate-300 text-center ">
+              {quote}
+            </p>
             <div className="flex items-center gap-4">
                 <ModeToggle />
                 <Avatar className="cursor-pointer hover:scale-105 transition-transform" onClick={() => setDisplayDetails(!displayDetails)}>
@@ -241,10 +278,14 @@ export default function DetailsPage() {
             </div>
           </header>
 
+          <p className="text-sm italic md:hidden text-slate-600 dark:text-slate-300 text-center mb-2.5">
+            {quote}
+          </p>
+
           <div className="grid gap-8 md:grid-cols-2">
             {displayDetails &&
               // 5. FIX: Inner containers use bg-secondary or bg-muted instead of bg-black/40
-              <div className="rounded-[32px] border border-border bg-secondary/20 p-8 animate-in fade-in slide-in-from-left-4 duration-700 delay-200">
+              <div className="rounded-[20px] md:rounded-[32px] border border-border bg-secondary/20 p-4 md:p-8 animate-in fade-in slide-in-from-left-4 duration-700 delay-200">
                 <div className="mb-6 text-xl text-muted-foreground font-semibold">Details:</div>
                 <div className="rounded-2xl border border-border/50 bg-card/40 animate-pulse-slow">
                   
