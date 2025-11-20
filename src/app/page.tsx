@@ -4,7 +4,7 @@ import { BubbleCluster } from "@/components/ui";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Cookies from "js-cookie";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ModeToggle } from "@/components/ui/trigger"; // Assuming you have a toggle component
 
 const landingPageArray = [
@@ -39,11 +39,45 @@ const landingPageArray = [
     desc: "Enjoy a smooth, responsive user interface with dynamic animations and the flexibility to switch between Dark and Light mode themes for comfortable viewing."
   }
 ];
+
+const GYM_QUOTES = [
+  "The only bad workout is the one that didn't happen.",
+  "Sore today, strong tomorrow.",
+  "Don't wish for it, work for it.",
+  "Your body can stand almost anything. It’s your mind that you have to convince.",
+  "Motivation is what gets you started. Habit is what keeps you going.",
+  "Success starts with self-discipline.",
+  "Sweat is just fat crying.",
+  "Respect your body. It’s the only one you get.",
+  "Focus on your goal. Don't look in any direction but ahead.",
+  "Pain is temporary. Quitting lasts forever.",
+  "Stronger than yesterday.",
+  "You don't find willpower, you create it.",
+  "Excuses don't burn calories.",
+  "Discipline is doing what needs to be done, even if you don't want to.",
+  "Fall in love with the process, and the results will come."
+];
+const getDailyQuote = () => {
+  const date = new Date();
+  // Create a unique seed for the day (e.g., 2023-10-27)
+  const dateString = date.toDateString();
+  
+  // Simple hash function to get a number from the string
+  let hash = 0;
+  for (let i = 0; i < dateString.length; i++) {
+    hash = dateString.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  
+  // Use absolute value of hash to pick an index
+  const index = Math.abs(hash) % GYM_QUOTES.length;
+  return GYM_QUOTES[index];
+};
 export default function LoginPage() {
   const router = useRouter();
   const [signUp, setSignUp] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const quote = getDailyQuote();
 
   const login = () => {
     const userCount = localStorage.getItem("userCount");
@@ -59,6 +93,8 @@ export default function LoginPage() {
       }
     }
   };
+
+  
 
   const signUpUser = () => {
     const userCount = localStorage.getItem("userCount");
@@ -82,7 +118,10 @@ export default function LoginPage() {
         {/* 2. FIX: Used bg-card/bg-popover instead of radial gradients, removed hardcoded borders */}
         <section className="rounded-[34px] border border-border bg-card/50 px-10 py-12 shadow-2xl backdrop-blur-sm dark:bg-[radial-gradient(circle_at_top,_#111,_#050505)]">
           <header className="mb-10 flex items-center justify-between">
-            <h1 className="text-3xl font-bold tracking-tight">Health App - We help you get fitter!</h1>
+            <h1 className="text-3xl font-bold tracking-tight">HealthMon</h1>
+            <p className="text-sm italic text-slate-600 dark:text-slate-300 text-center max-w-xs">
+              {quote}
+            </p>
             {/* Optional: Add Theme Toggle here if you want to test it */}
             <div className="flex gap-4">
                 <ModeToggle/>
@@ -106,8 +145,8 @@ export default function LoginPage() {
             </div>
 
             <div className="rounded-[32px] border border-border bg-secondary/20 p-8 animate-in fade-in slide-in-from-right-4 duration-700 delay-300">
-              <div className="mb-12 flex items-center justify-between text-4xl text-muted-foreground">
-                <span className="font-light">Secure Access</span>
+              <div className="mb-12 flex items-center justify-between text-3xl text-muted-foreground">
+                <span className="font-light italic">Secure Access</span>
               </div>
 
               <form className="flex flex-col gap-6 text-lg text-foreground">

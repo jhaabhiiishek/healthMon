@@ -1,36 +1,72 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+🧠 AI Fitness & Diet Planner
 
-## Getting Started
+A Next.js 14 application that generates hyper-personalized workout routines and diet plans using Google Gemini AI, creates visual aids using Imagen 3, and provides audio guidance using ElevenLabs AI.
 
-First, run the development server:
+✨ Features
 
-```bash
+Personalized AI Generation: Creates detailed weekly workout splits and daily meal plans based on user metrics (age, weight, goal, equipment).
+
+Visual Exercise & Meal Guides: Generates high-quality, photorealistic images for specific exercises or meals on demand using Google's Imagen model.
+
+Audio Guidance (TTS): Reads out your daily plan using ElevenLabs' realistic AI voices.
+
+Progress Tracking: Interactive calendar to log daily workouts with photo uploads (stored locally).
+
+PDF Export: Download your full plan as a formatted PDF.
+
+Dark/Light Mode: Fully responsive UI with theme switching.
+
+Secure(ish) Auth: Simple local-storage based authentication for personal use.
+
+🛠️ Tech Stack
+
+Framework: Next.js 14 (App Router)
+
+Language: TypeScript
+
+Styling: Tailwind CSS & Shadcn UI
+
+AI Models:
+
+Text: Google Gemini 1.5 Flash
+
+Image: Google Imagen 3.0
+
+Audio: ElevenLabs Multilingual v2
+
+Utilities: jspdf (PDF generation), lucide-react (Icons), date-fns (Dates).
+
+🚀 Getting Started
+
+1. Clone & Install
+
+git clone <your-repo-url>
+cd my-app
+npm install
+
+
+2. Environment Setup
+
+Create a file named .env.local in the root directory and add your keys:
+
+# Get this from [https://aistudio.google.com/](https://aistudio.google.com/)
+GEMINI_API_KEY=AIzaSy...
+
+# Get this from [https://elevenlabs.io/](https://elevenlabs.io/)
+ELEVENLABS_API_KEY=xi_...
+
+
+3. Run the App
+
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Open http://localhost:3000 to view it.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+📂 Project Structure
 
-## Learn More
+src/app/details: Main dashboard for inputting metrics and viewing the calendar.
 
-To learn more about Next.js, take a look at the following resources:
+src/components/WorkoutDietPlan.tsx: The core component that displays the plan, handles modals, and triggers AI generation.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+src/app/actions.ts: Server actions for secure API calls to Google and ElevenLabs.

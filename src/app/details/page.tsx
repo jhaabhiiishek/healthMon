@@ -231,7 +231,7 @@ export default function DetailsPage() {
         {/* 4. FIX: Main Card uses bg-card/popover. Dark mode keeps the cool gradient via 'dark:' modifier */}
         <section className="rounded-[34px] border border-border bg-card/50 px-10 py-12 shadow-2xl backdrop-blur-sm dark:bg-[radial-gradient(circle_at_top,_#111,_#050505)]">
           <header className="mb-10 flex items-center justify-between">
-            <h1 className="text-3xl font-bold tracking-tight">Health App - We help you get fitter!</h1>
+            <h1 className="text-3xl font-bold tracking-tight">HealthMon</h1>
             <div className="flex items-center gap-4">
                 <ModeToggle />
                 <Avatar className="cursor-pointer hover:scale-105 transition-transform" onClick={() => setDisplayDetails(!displayDetails)}>
