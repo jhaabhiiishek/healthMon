@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import {ThemeProvider} from "@/components/theme-provider";
+import { ThemeProvider } from "@/components/theme-provider";
 import { Dumbbell } from "lucide-react";
-
+import { Toaster } from 'sonner';
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
@@ -34,7 +34,8 @@ export const metadata: Metadata = {
     title: "HealthMon AI - The Future of Fitness",
     description: "Generate hyper-personalized workouts and meal plans with Gemini & ElevenLabs.",
     siteName: "HealthMon AI",
-}}
+  }
+}
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -44,7 +45,8 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className="min-h-screen">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-        {children}
+          {children}
+          <Toaster position="top-center" richColors />
         </ThemeProvider>
       </body>
     </html>

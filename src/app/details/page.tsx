@@ -3,12 +3,14 @@ import { useState, useEffect } from "react";
 import * as React from "react";
 import { Calendar } from "@/components/ui/calendar"
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ModeToggle } from "@/components/ui/trigger"; // Check path
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Dropzone, DropzoneContent, DropzoneEmptyState } from '@/components/ui/shadcn-io/dropzone';
 import WorkoutDietPlan from "@/components/WorkoutDietPlan";
 import Cookies from "js-cookie";
-import { generateTextWithGemini } from "../actions";
+import { generateTextWithGemini, generateDailyQuote } from "../actions";
+import { motion, AnimatePresence } from "framer-motion";
 
 interface FitnessPlan {
   workout_routine: Record<string, string>;
@@ -83,40 +85,8 @@ const SelectField = ({ label, id, value, onChange, options }: { label: string; i
   </div>
 );
 
-const GYM_QUOTES = [
-  "The only bad workout is the one that didn't happen.",
-  "Sore today, strong tomorrow.",
-  "Don't wish for it, work for it.",
-  "Your body can stand almost anything. It’s your mind that you have to convince.",
-  "Motivation is what gets you started. Habit is what keeps you going.",
-  "Success starts with self-discipline.",
-  "Sweat is just fat crying.",
-  "Respect your body. It’s the only one you get.",
-  "Focus on your goal. Don't look in any direction but ahead.",
-  "Pain is temporary. Quitting lasts forever.",
-  "Stronger than yesterday.",
-  "You don't find willpower, you create it.",
-  "Excuses don't burn calories.",
-  "Discipline is doing what needs to be done, even if you don't want to.",
-  "Fall in love with the process, and the results will come."
-];
-const getDailyQuote = () => {
-  const date = new Date();
-  // Create a unique seed for the day (e.g., 2023-10-27)
-  const dateString = date.toDateString();
-  
-  // Simple hash function to get a number from the string
-  let hash = 0;
-  for (let i = 0; i < dateString.length; i++) {
-    hash = dateString.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  
-  // Use absolute value of hash to pick an index
-  const index = Math.abs(hash) % GYM_QUOTES.length;
-  return GYM_QUOTES[index];
-};
-
 export default function DetailsPage() {
+  const router = useRouter();
   const [formData, setFormData] = useState(initialFormState);
   const [isGenerating, setIsGenerating] = useState(false);
   const [message, setMessage] = useState('');
@@ -128,11 +98,35 @@ export default function DetailsPage() {
   const [enterDayProgress, setEnterDayProgress] = useState<boolean>(true);
   const [progressModalDate, setProgressModalDate] = useState<string | null>(null)
   const [completedDays, setCompletedDays] = useState<Date[]>([]);
-  const quote = getDailyQuote();
+  const [quote, setQuote] = useState("Your body is the only place you have to live.");
+
+  useEffect(() => {
+    // Auth Check
+    const user = Cookies.get("loggedInUser");
+    if (!user) {
+      router.push("/");
+      return;
+    }
+
+    async function loadQuote() {
+      const today = new Date().toDateString();
+      const storedQuote = localStorage.getItem(`dailyQuote_${today}`);
+
+      if (storedQuote) {
+        setQuote(storedQuote);
+      } else {
+        const newQuote = await generateDailyQuote();
+        setQuote(newQuote);
+        localStorage.setItem(`dailyQuote_${today}`, newQuote);
+      }
+    }
+    loadQuote();
+  }, [router]);
 
   useEffect(() => {
     // Ensure logic runs on client side
     if (typeof window !== "undefined") {
+      // 1. Load Completed Days
       Object.keys(localStorage).forEach(key => {
         const userPrefix = Cookies.get("loggedInUser") || "guest";
         if (key.startsWith(`${userPrefix}_`)) {
@@ -142,14 +136,28 @@ export default function DetailsPage() {
           const offset = new Date().getTimezoneOffset() * 60000;
           const storedDate = new Date(new Date(datePart).getTime() - offset);
           const iso = storedDate.toISOString().split('T')[0];
-          
+
           // Prevent duplicate dates in state (optional check)
           setCompletedDays((prev) => {
-             const exists = prev.some(d => d.toISOString().split('T')[0] === iso);
-             return exists ? prev : [...prev, new Date(iso)];
+            const exists = prev.some(d => d.toISOString().split('T')[0] === iso);
+            return exists ? prev : [...prev, new Date(iso)];
           });
         }
       });
+
+      // 2. Load Persisted Plan
+      const savedPlan = localStorage.getItem("currentPlan");
+      if (savedPlan) {
+        try {
+          const parsedPlan = JSON.parse(savedPlan);
+          setPlan(parsedPlan);
+          setDisplayDetails(false); // If plan exists, show it directly
+          const savedFormData = localStorage.getItem("latestFormData");
+          if (savedFormData) setFormData(JSON.parse(savedFormData));
+        } catch (e) {
+          console.error("Failed to parse saved plan", e);
+        }
+      }
     }
   }, []);
 
@@ -238,7 +246,12 @@ export default function DetailsPage() {
         const planData: FitnessPlan = JSON.parse(response);
         console.log("Generated Plan:", planData);
         setPlan(planData);
-        setDisplayDetails(!displayDetails);
+        setDisplayDetails(false); // Auto-switch to plan view
+
+        // PERSISTENCE: Save to LocalStorage
+        localStorage.setItem("currentPlan", JSON.stringify(planData));
+        localStorage.setItem('latestFormData', JSON.stringify(formData));
+
       } catch (error) {
         console.error("Failed to parse plan JSON:", error);
       }
@@ -249,7 +262,6 @@ export default function DetailsPage() {
     e.preventDefault();
     setIsGenerating(true);
     setMessage('Generating your personalized fitness plan...');
-    localStorage.setItem('latestFormData', JSON.stringify(formData));
 
     setTimeout(() => {
       setIsGenerating(false);
@@ -257,122 +269,153 @@ export default function DetailsPage() {
     }, 2000);
   };
 
+  const resetPlan = () => {
+    localStorage.removeItem("currentPlan");
+    setPlan(null);
+    setDisplayDetails(true);
+  }
+
   return (
     // 3. FIX: Main background uses bg-background and text-foreground
     <main className="min-h-screen bg-background  px-2 py-2 md:px-6 md:py-9 lg:px-8 lg:py-12 text-foreground flex items-center justify-center transition-colors duration-300">
-      <div className="w-full max-w-7xl duration-1000">
-        
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.8 }}
+        className="w-full max-w-7xl"
+      >
+
         {/* 4. FIX: Main Card uses bg-card/popover. Dark mode keeps the cool gradient via 'dark:' modifier */}
         <section className="rounded-[20px] md:rounded-[34px] border border-border bg-card/50 px-2 md:px-8 lg:px-10 py-4 md:py-9 lg:py-12 shadow-2xl backdrop-blur-sm dark:bg-[radial-gradient(circle_at_top,_#111,_#050505)]">
           <header className="mb-5 md:mb-10 flex items-center justify-between">
             <h1 className="text-3xl font-bold tracking-tight">HealthMon</h1>
-            <p className="text-sm italic hidden md:block text-slate-600 dark:text-slate-300 text-center ">
-              {quote}
-            </p>
+            <motion.p
+              key={quote}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.5 }}
+              className="text-sm italic hidden md:block text-slate-600 dark:text-slate-300 text-center "
+            >
+              "{quote}"
+            </motion.p>
             <div className="flex items-center gap-4">
-                <ModeToggle />
-                <Avatar className="cursor-pointer hover:scale-105 transition-transform" onClick={() => setDisplayDetails(!displayDetails)}>
+              <ModeToggle />
+              <Avatar className="cursor-pointer hover:scale-105 transition-transform" onClick={() => setDisplayDetails(!displayDetails)}>
                 <AvatarImage src="https://github.com/shadcn.png" />
                 <AvatarFallback>CN</AvatarFallback>
-                </Avatar>
+              </Avatar>
             </div>
           </header>
 
           <p className="text-sm italic md:hidden text-slate-600 dark:text-slate-300 text-center mb-2.5">
-            {quote}
+            "{quote}"
           </p>
 
           <div className="grid gap-8 md:grid-cols-2">
-            {displayDetails &&
-              // 5. FIX: Inner containers use bg-secondary or bg-muted instead of bg-black/40
-              <div className="rounded-[20px] md:rounded-[32px] border border-border bg-secondary/20 p-4 md:p-8 animate-in fade-in slide-in-from-left-4 duration-700 delay-200">
-                <div className="mb-6 text-xl text-muted-foreground font-semibold">Details:</div>
-                <div className="rounded-2xl border border-border/50 bg-card/40 animate-pulse-slow">
-                  
-                  {/* The Input Form */}
-                  <form onSubmit={(e) => handleSubmit(e)} className="space-y-8 p-4">
+            <AnimatePresence mode="wait">
+              {displayDetails ? (
+                // 5. FIX: Inner containers use bg-secondary or bg-muted instead of bg-black/40
+                <motion.div
+                  key="details"
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.5 }}
+                  className="rounded-[20px] md:rounded-[32px] border border-border bg-secondary/20 p-4 md:p-8"
+                >
+                  <div className="mb-6 text-xl text-muted-foreground font-semibold">Details:</div>
+                  <div className="rounded-2xl border border-border/50 bg-card/40 animate-pulse-slow">
 
-                    {/* Section 1: Personal Metrics */}
-                    <div className="p-6 bg-background/50 rounded-2xl border border-primary/10 shadow-sm">
-                      <h2 className="text-xl font-bold text-primary mb-4 flex items-center"> Your Metrics </h2>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <InputField label="Name" id="name" value={formData.name} onChange={(e) => handleChange(e)} />
-                        <InputField label="Age (Years)" id="age" type="number" value={formData.age} onChange={(e) => handleChange(e)} min="16" max="100" />
-                        <SelectField label="Gender" id="gender" value={formData.gender} onChange={(e) => handleChange(e)} options={genderOptions} />
-                        <InputField label="Height (cm)" id="heightCm" type="number" value={formData.heightCm} onChange={(e) => handleChange(e)} min="100" max="250" />
-                        <InputField label="Weight (kg)" id="weightKg" type="number" value={formData.weightKg} onChange={(e) => handleChange(e)} min="30" max="300" />
-                      </div>
-                    </div>
+                    {/* The Input Form */}
+                    <form onSubmit={(e) => handleSubmit(e)} className="space-y-8 p-4">
 
-                    {/* Section 2: Goals and Preferences */}
-                    <div className="p-6 bg-background/50 rounded-2xl border border-primary/10 shadow-sm">
-                      <h2 className="text-xl font-bold text-primary mb-4 flex items-center"> Goals & Preferences </h2>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <SelectField label="Fitness Goal" id="fitnessGoal" value={formData.fitnessGoal} onChange={(e) => handleChange(e)} options={goalOptions} />
-                        <SelectField label="Fitness Level" id="fitnessLevel" value={formData.fitnessLevel} onChange={(e) => handleChange(e)} options={levelOptions} />
-                        <SelectField label="Workout Location" id="workoutLocation" value={formData.workoutLocation} onChange={(e) => handleChange(e)} options={locationOptions} />
-                        <div className="md:col-span-1">
-                          <SelectField label="Dietary Preferences" id="dietaryPreference" value={formData.dietaryPreference} onChange={(e) => handleChange(e)} options={dietOptions} />
+                      {/* Section 1: Personal Metrics */}
+                      <div className="p-6 bg-background/50 rounded-2xl border border-primary/10 shadow-sm">
+                        <h2 className="text-xl font-bold text-primary mb-4 flex items-center"> Your Metrics </h2>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                          <InputField label="Name" id="name" value={formData.name} onChange={(e) => handleChange(e)} />
+                          <InputField label="Age (Years)" id="age" type="number" value={formData.age} onChange={(e) => handleChange(e)} min="16" max="100" />
+                          <SelectField label="Gender" id="gender" value={formData.gender} onChange={(e) => handleChange(e)} options={genderOptions} />
+                          <InputField label="Height (cm)" id="heightCm" type="number" value={formData.heightCm} onChange={(e) => handleChange(e)} min="100" max="250" />
+                          <InputField label="Weight (kg)" id="weightKg" type="number" value={formData.weightKg} onChange={(e) => handleChange(e)} min="30" max="300" />
                         </div>
                       </div>
-                    </div>
 
-                    {/* Section 3: Optional Details */}
-                    <div className="p-6 bg-background/50 rounded-2xl border border-primary/10 shadow-sm">
-                      <h2 className="text-xl font-bold text-primary mb-4 flex items-center"> Optional Details </h2>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <SelectField label="Current Stress Level" id="stressLevel" value={formData.stressLevel} onChange={(e) => handleChange(e)} options={stressOptions} />
-                        <div className="flex flex-col space-y-2 md:col-span-2">
-                          <label htmlFor="medicalHistory" className="text-sm font-medium text-muted-foreground">
-                            Medical History (Optional)
-                          </label>
-                          <textarea
-                            id="medicalHistory"
-                            name="medicalHistory"
-                            value={formData.medicalHistory}
-                            onChange={(e) => handleChange(e)}
-                            placeholder="Any injuries, allergies, or health conditions we should know about?"
-                            className="w-full rounded-xl border border-input bg-background px-4 py-2 text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-ring focus:outline-none transition duration-300"
-                          />
+                      {/* Section 2: Goals and Preferences */}
+                      <div className="p-6 bg-background/50 rounded-2xl border border-primary/10 shadow-sm">
+                        <h2 className="text-xl font-bold text-primary mb-4 flex items-center"> Goals & Preferences </h2>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                          <SelectField label="Fitness Goal" id="fitnessGoal" value={formData.fitnessGoal} onChange={(e) => handleChange(e)} options={goalOptions} />
+                          <SelectField label="Fitness Level" id="fitnessLevel" value={formData.fitnessLevel} onChange={(e) => handleChange(e)} options={levelOptions} />
+                          <SelectField label="Workout Location" id="workoutLocation" value={formData.workoutLocation} onChange={(e) => handleChange(e)} options={locationOptions} />
+                          <div className="md:col-span-1">
+                            <SelectField label="Dietary Preferences" id="dietaryPreference" value={formData.dietaryPreference} onChange={(e) => handleChange(e)} options={dietOptions} />
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    {/* Submission Button */}
-                    <div className="pt-4">
-                      <button
-                        type="submit"
-                        onClick={() => generatePlan()}
-                        disabled={isGenerating}
-                        className={`w-full text-lg font-semibold py-3 rounded-xl transition-all duration-300 transform shadow-lg ${isGenerating
+                      {/* Section 3: Optional Details */}
+                      <div className="p-6 bg-background/50 rounded-2xl border border-primary/10 shadow-sm">
+                        <h2 className="text-xl font-bold text-primary mb-4 flex items-center"> Optional Details </h2>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <SelectField label="Current Stress Level" id="stressLevel" value={formData.stressLevel} onChange={(e) => handleChange(e)} options={stressOptions} />
+                          <div className="flex flex-col space-y-2 md:col-span-2">
+                            <label htmlFor="medicalHistory" className="text-sm font-medium text-muted-foreground">
+                              Medical History (Optional)
+                            </label>
+                            <textarea
+                              id="medicalHistory"
+                              name="medicalHistory"
+                              value={formData.medicalHistory}
+                              onChange={(e) => handleChange(e)}
+                              placeholder="Any injuries, allergies, or health conditions we should know about?"
+                              className="w-full rounded-xl border border-input bg-background px-4 py-2 text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-ring focus:outline-none transition duration-300"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Submission Button */}
+                      <div className="pt-4 flex gap-4">
+
+                        <button
+                          type="submit"
+                          onClick={() => generatePlan()}
+                          disabled={isGenerating}
+                          className={`w-full text-lg font-semibold py-3 rounded-xl transition-all duration-300 transform shadow-lg ${isGenerating
                             ? 'bg-muted text-muted-foreground cursor-not-allowed flex items-center justify-center'
                             : 'bg-gradient-to-r from-primary to-indigo-600 hover:from-primary/90 hover:to-indigo-700 hover:scale-[1.01] text-primary-foreground'
-                          }`}
-                      >
-                        {isGenerating ? (
-                          <>Processing...</>
-                        ) : (
-                          'Generate'
-                        )}
-                      </button>
+                            }`}
+                        >
+                          {isGenerating ? (
+                            <>Processing...</>
+                          ) : (
+                            'Generate Plan'
+                          )}
+                        </button>
+
+                      </div>
                       {message && (
                         <p className="mt-4 text-center text-sm font-medium text-primary">
                           {message}
                         </p>
                       )}
-                    </div>
-                  </form>
-                </div>
-              </div>
-            }
+                    </form>
+                  </div>
+                </motion.div>
+              ) : (
+                <WorkoutDietPlan plan={plan} resetPlan={resetPlan} />
+              )}
+            </AnimatePresence>
 
-            {!displayDetails &&
-              <WorkoutDietPlan plan={plan} />
-            }
-
-            <div className="rounded-[32px] border border-border bg-secondary/20 p-8 animate-in fade-in slide-in-from-right-4 duration-700 delay-300 flex flex-col h-full">
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.3, duration: 0.5 }}
+              className="rounded-[32px] border border-border bg-secondary/20 p-8 flex flex-col h-full"
+            >
               <div className="mb-6 text-xl text-muted-foreground font-semibold">Calendar:</div>
-              
+
               {/* 6. FIX: Calendar Styling */}
               <Calendar
                 mode="single"
@@ -390,7 +433,7 @@ export default function DetailsPage() {
                 className="rounded-2xl border border-border bg-card text-card-foreground p-4 shadow-sm"
                 buttonVariant="ghost"
               />
-              
+
               {/* 7. FIX: Dropzone Styling */}
               <Dropzone
                 accept={{ 'image/*': [] }}
@@ -414,10 +457,10 @@ export default function DetailsPage() {
               >
                 {enterDayProgress ? "Upload today's Progress" : "Well done! Progress Uploaded."}
               </button>
-            </div>
+            </motion.div>
           </div>
         </section>
-      </div>
+      </motion.div>
 
       {/* 8. FIX: Modal Styling */}
       {progressModalDate && (

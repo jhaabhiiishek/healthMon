@@ -2,6 +2,7 @@
 
 import { BubbleCluster, BubbleClusterIcons } from "./ui";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import jsPDF from "jspdf";
 import Cookies from "js-cookie";
 import {
@@ -18,10 +19,13 @@ import {
   X,
   Dumbbell,
   Utensils,
-  ChevronDown
+  ChevronDown,
+  RotateCcw
 } from 'lucide-react';
-import { generateImageWithGemini,generateAudioWithElevenLabs, generateTextWithGemini } from "@/app/actions";
+import { generateImageWithGemini, generateAudioWithElevenLabs, generateTextWithGemini } from "@/app/actions";
 import { Skeleton } from "@/components/ui/skeleton";
+import { motion, AnimatePresence } from "framer-motion";
+
 interface FitnessPlan {
   workout_routine: Record<string, string>;
   diet_plan: Record<string, string>;
@@ -30,6 +34,7 @@ interface FitnessPlan {
 
 interface WorkoutDietPlanProps {
   plan?: FitnessPlan | null;
+  resetPlan?: () => void;
   showFlowPreview?: boolean;
 }
 
@@ -43,7 +48,10 @@ const optionIcons = [
 
 const Checkbox = ({ checked, onChange }: { checked: boolean; onChange?: (checked: boolean) => void }) => (
   <div
-    onClick={() => onChange && onChange(!checked)}
+    onClick={(e) => {
+      e.stopPropagation();
+      onChange && onChange(!checked);
+    }}
     className={`h-6 w-6 rounded-md border border-foreground/30 flex items-center justify-center cursor-pointer transition-all ${checked ? 'bg-emerald-500 border-emerald-500' : 'bg-foreground/5 hover:bg-foreground/10'}`}
   >
     {checked && <Check size={14} className="text-foreground" />}
@@ -54,14 +62,16 @@ const DietRow = ({ setSelectedMeal, label, content, delay }: { setSelectedMeal: 
   const [checked, setChecked] = useState(false);
 
   return (
-    <div
+    <motion.div
+      initial={{ opacity: 0, x: 20 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ delay: delay * 0.001, duration: 0.5 }}
       onClick={() => setSelectedMeal({ label, content })}
-      className="flex flex-col gap-2 rounded-2xl border border-dotted border-foreground/20 p-5 text-lg text-foreground/80 transition-all hover:border-foreground/40 hover:bg-foreground/5 animate-in fade-in slide-in-from-right-4 group"
-      style={{ animationDelay: `${delay}ms` }}
+      className="flex flex-col gap-2 rounded-2xl border border-dotted border-foreground/20 p-5 text-lg text-foreground/80 transition-all hover:border-foreground/40 hover:bg-foreground/5 cursor-pointer group"
     >
       <div className="flex items-center justify-between w-full">
 
-        <span className="font-medium text-orange-200/90 text-base">{label}</span>
+        <span className="font-medium text-orange-200/90 text-base group-hover:text-orange-300 transition-colors">{label}</span>
 
         <Checkbox checked={checked} onChange={setChecked} />
 
@@ -73,7 +83,7 @@ const DietRow = ({ setSelectedMeal, label, content, delay }: { setSelectedMeal: 
 
       </p>
 
-    </div>
+    </motion.div>
 
   );
 
@@ -81,22 +91,25 @@ const DietRow = ({ setSelectedMeal, label, content, delay }: { setSelectedMeal: 
 
 
 
-export default function WorkoutDietPlan({ plan, showFlowPreview = false }: WorkoutDietPlanProps & { plan?: FitnessPlan | null }) {
-  const capitalize = (s:string)=>{s.charAt(0).toUpperCase()+s.slice(1);}
+export default function WorkoutDietPlan({ plan, resetPlan, showFlowPreview = false }: WorkoutDietPlanProps) {
+  const capitalize = (s: string) => { s.charAt(0).toUpperCase() + s.slice(1); }
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentAudioType, setCurrentAudioType] = useState<'workout' | 'diet' | null>(null);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [generatedImageDish, setGeneratedImageDish] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [currentPlan,setCurrentPlan] = useState(plan)
+  const [currentPlan, setCurrentPlan] = useState(plan)
   const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
-  const [selectedDish,setSelectedDish] = useState<string|null>(null);
+  const [selectedDish, setSelectedDish] = useState<string | null>(null);
   const [selectedMeal, setSelectedMeal] = useState<{ label: string; content: string } | null>(null);
-  const [selectedDay,setSelectedDay] = useState<{ day: string; routine: string } | null>(null);
+  const [selectedDay, setSelectedDay] = useState<{ day: string; routine: string } | null>(null);
+  const [mounted, setMounted] = useState(false);
+  const [cachedImages, setCachedImages] = useState<Record<string, string>>({});
 
 
   useEffect(() => {
+    setMounted(true);
     // Reset audio when plan changes
     if (audioRef.current) {
       audioRef.current.pause();
@@ -108,8 +121,19 @@ export default function WorkoutDietPlan({ plan, showFlowPreview = false }: Worko
     setCurrentPlan(plan);
   }, [plan]);
 
-  const downloadAsPdf = async (choice:number,dietPlan?: boolean)=>{
-    if(choice==1){
+  useEffect(() => {
+    const saved = localStorage.getItem("cached_images");
+    if (saved) {
+      try {
+        setCachedImages(JSON.parse(saved));
+      } catch (e) {
+        console.log("Failed to load cache");
+      }
+    }
+  }, []);
+
+  const handleOptionClick = async (choice: number, dietPlan?: boolean) => {
+    if (choice == 1) {
       const doc = new jsPDF();
       const username = Cookies.get("loggedInUser") || "User";
 
@@ -118,7 +142,7 @@ export default function WorkoutDietPlan({ plan, showFlowPreview = false }: Worko
       const pageHeight = doc.internal.pageSize.getHeight();
       const margin = 15; // Slightly more margin for a cleaner look
       const maxLineWidth = pageWidth - (margin * 2);
-     
+
       let y = margin; // Initialize Vertical cursor position
 
       // --- A. MAIN TITLE ---
@@ -128,7 +152,7 @@ export default function WorkoutDietPlan({ plan, showFlowPreview = false }: Worko
       doc.setTextColor(0, 150, 100); // Emerald Green Title
       doc.text(`${username}'s ${dietPlan ? "Diet" : "Workout"} Plan`, margin, y);
       y += 15; // Add spacing after title
-  
+
       // Draw a line under the main title
       doc.setDrawColor(200, 200, 200);
       doc.line(margin, y - 5, pageWidth - margin, y - 5);
@@ -136,98 +160,98 @@ export default function WorkoutDietPlan({ plan, showFlowPreview = false }: Worko
       const data = dietPlan ? currentPlan?.diet_plan : currentPlan?.workout_routine;
 
       // --- B. CONTENT LOOP ---
-      if (data && typeof data === 'object'&&!dietPlan) {
+      if (data && typeof data === 'object' && !dietPlan) {
         Object.entries(data).forEach(([day, content]) => {
-            const textContent = String(content);
-            // 1. PARSE CONTENT: Extract "Focus" vs "Details"
-            // Example: "Chest: Bench press..." -> Focus: "Chest", Details: "Bench press..."
-            let focus = "";
-            let details = textContent;
-            const colonIndex = textContent.indexOf(':');
+          const textContent = String(content);
+          // 1. PARSE CONTENT: Extract "Focus" vs "Details"
+          // Example: "Chest: Bench press..." -> Focus: "Chest", Details: "Bench press..."
+          let focus = "";
+          let details = textContent;
+          const colonIndex = textContent.indexOf(':');
 
 
-            if (colonIndex > -1 && colonIndex < 50) { // Limit focus length to avoid false positives
-                focus = textContent.substring(0, colonIndex).trim();
-                details = textContent.substring(colonIndex + 1).trim();
+          if (colonIndex > -1 && colonIndex < 50) { // Limit focus length to avoid false positives
+            focus = textContent.substring(0, colonIndex).trim();
+            details = textContent.substring(colonIndex + 1).trim();
+          }
+          // --- PAGE BREAK CHECK ---
+          // If we are too close to bottom, start a new page
+          if (y + 40 > pageHeight - margin) {
+            doc.addPage();
+            y = margin;
+          }
+
+
+          // 2. DAY HEADING (e.g., "MONDAY")
+          doc.setFontSize(14);
+          doc.setFont("helvetica", "bold");
+          doc.setTextColor(0, 0, 0); // Black
+          doc.text(day.toUpperCase(), margin, y);
+
+          y += 7;
+
+          // 3. SUBHEADING / FOCUS (e.g., "Chest & Triceps")
+
+          if (focus) {
+            doc.setFontSize(11);
+            doc.setFont("helvetica", "bolditalic");
+            doc.setTextColor(80, 80, 80); // Dark Gray
+            doc.text(focus, margin, y);
+            y += 6;
+          }
+
+          // 4. DETAILS / EXERCISES (Simple text wrapped)
+          doc.setFontSize(10);
+          doc.setFont("helvetica", "normal");
+          doc.setTextColor(60, 60, 60); // Softer Gray for body
+          // Automatically wrap text to fit width
+          const splitDetails = doc.splitTextToSize(details, maxLineWidth);
+
+          splitDetails.forEach((line: string) => {
+            // Check page break for individual lines
+            if (y + 5 > pageHeight - margin) {
+              doc.addPage();
+              y = margin;
             }
-            // --- PAGE BREAK CHECK ---
-            // If we are too close to bottom, start a new page
-            if (y + 40 > pageHeight - margin) {
-                doc.addPage();
-                y = margin;
-            }
+            doc.text(line, margin, y);
+            y += 5; // Line height
+          });
 
-
-           // 2. DAY HEADING (e.g., "MONDAY")
-            doc.setFontSize(14);
-            doc.setFont("helvetica", "bold");
-            doc.setTextColor(0, 0, 0); // Black
-            doc.text(day.toUpperCase(), margin, y);
-
-            y += 7;
-
-            // 3. SUBHEADING / FOCUS (e.g., "Chest & Triceps")
-
-            if (focus) {
-                doc.setFontSize(11);
-                doc.setFont("helvetica", "bolditalic");
-                doc.setTextColor(80, 80, 80); // Dark Gray
-                doc.text(focus, margin, y);
-                y += 6;
-            }
-
-            // 4. DETAILS / EXERCISES (Simple text wrapped)
-            doc.setFontSize(10);
-            doc.setFont("helvetica", "normal");
-            doc.setTextColor(60, 60, 60); // Softer Gray for body
-            // Automatically wrap text to fit width
-            const splitDetails = doc.splitTextToSize(details, maxLineWidth);
-           
-            splitDetails.forEach((line:string) => {
-                // Check page break for individual lines
-                if (y + 5 > pageHeight - margin) {
-                    doc.addPage();
-                    y = margin;
-                }
-                 doc.text(line, margin, y);
-                y += 5; // Line height
-            });
-
-            // Add spacing between days
-            y += 8;
+          // Add spacing between days
+          y += 8;
         });
-      }else if(data && typeof data ==='object' && dietPlan){
+      } else if (data && typeof data === 'object' && dietPlan) {
         Object.entries(data).forEach(([meal, content]) => {
-            const textContent = String(content);
-            // --- PAGE BREAK CHECK ---
-            if (y + 30 > pageHeight - margin) {
-                doc.addPage();
-                y = margin;
+          const textContent = String(content);
+          // --- PAGE BREAK CHECK ---
+          if (y + 30 > pageHeight - margin) {
+            doc.addPage();
+            y = margin;
+          }
+          // 2. MEAL HEADING (e.g., "Breakfast")
+          doc.setFontSize(14);
+          doc.setFont("helvetica", "bold");
+          doc.setTextColor(0, 0, 0); // Black
+          doc.text(meal, margin, y);
+          y += 7;
+          // 3. MEAL DETAILS
+          doc.setFontSize(10);
+          doc.setFont("helvetica", "normal");
+          doc.setTextColor(60, 60, 60); // Softer Gray for body
+          const splitDetails = doc.splitTextToSize(textContent, maxLineWidth);
+          splitDetails.forEach((line: string) => {
+            // Check page break for individual lines
+            if (y + 5 > pageHeight - margin) {
+              doc.addPage();
+              y = margin;
             }
-            // 2. MEAL HEADING (e.g., "Breakfast")
-            doc.setFontSize(14);
-            doc.setFont("helvetica", "bold");
-            doc.setTextColor(0, 0, 0); // Black
-            doc.text(meal, margin, y);
-            y += 7;
-            // 3. MEAL DETAILS
-            doc.setFontSize(10);
-            doc.setFont("helvetica", "normal");
-            doc.setTextColor(60, 60, 60); // Softer Gray for body
-            const splitDetails = doc.splitTextToSize(textContent, maxLineWidth);
-            splitDetails.forEach((line:string) => {
-                // Check page break for individual lines
-                if (y + 5 > pageHeight - margin) {
-                    doc.addPage();
-                    y = margin;
-                }
-                doc.text(line, margin, y);
-                y += 5; // Line height
-            });
-            // Add spacing between meals
-            y += 8;
+            doc.text(line, margin, y);
+            y += 5; // Line height
+          });
+          // Add spacing between meals
+          y += 8;
         });
-      }else {
+      } else {
         // Fallback if data is just a string or empty
         const textToPrint = String(data || "No plan available.");
         const lines = doc.splitTextToSize(textToPrint, maxLineWidth);
@@ -238,7 +262,7 @@ export default function WorkoutDietPlan({ plan, showFlowPreview = false }: Worko
       const fileName = `${username}_${dietPlan ? "diet" : "workout"}_plan.pdf`;
       doc.save(fileName);
     }
-    if(choice==2){
+    if (choice == 2) {
       const requestType = dietPlan ? "diet" : "workout";
 
       if (currentAudioType === requestType) {
@@ -284,30 +308,30 @@ export default function WorkoutDietPlan({ plan, showFlowPreview = false }: Worko
       const workoutPlan = currentPlan?.workout_routine;
       const targetObj = dietPlan ? diet_Plan : workoutPlan;
       let planInText = "";
-      if (targetObj && typeof targetObj === 'object'&&!dietPlan) {
+      if (targetObj && typeof targetObj === 'object' && !dietPlan) {
         planInText += `Here is your ${dietPlan ? "Diet" : "Workout"} plan. `;
         planInText += Object.entries(targetObj)
           .map(([day, routine]) => `On ${day}: ${routine}`)
           .join(". \n ");
-      }else if (targetObj && typeof targetObj === 'object'&&dietPlan) {
+      } else if (targetObj && typeof targetObj === 'object' && dietPlan) {
         planInText += `Here is your ${dietPlan ? "Diet" : "Workout"} plan. `;
         planInText += Object.entries(targetObj)
-          .map(([meal,content]) => `In ${meal}: ${content}`)
+          .map(([meal, content]) => `In ${meal}: ${content}`)
           .join(". \n ");
 
-     } else {
+      } else {
         planInText = String(targetObj || "No plan available.");
       }
-      try{
+      try {
         const audioSrc = await generateAudioWithElevenLabs(planInText);
-        if(audioSrc){
+        if (audioSrc) {
           const audio = new Audio(audioSrc);
           audioRef.current = audio;
-          audio.onplay=()=>setIsPlaying(true);
+          audio.onplay = () => setIsPlaying(true);
           audio.onended = () => setIsPlaying(false);
           audio.onpause = () => setIsPlaying(false);
           await audio.play();
-        }else{
+        } else {
           console.warn("ElevenLabs API limit exhausted. Switching to Native TTS.");
           window.speechSynthesis.cancel(); // Stop any previous speech
           const utterance = new SpeechSynthesisUtterance(planInText);
@@ -317,20 +341,20 @@ export default function WorkoutDietPlan({ plan, showFlowPreview = false }: Worko
         }
       } catch (error) {
         console.warn("ElevenLabs API limit exhausted. Switching to Native TTS.");
-          window.speechSynthesis.cancel(); // Stop any previous speech
-          const utterance = new SpeechSynthesisUtterance(planInText);
-          utterance.rate = 1.05; // Slightly slower for better clarity
-          utterance.pitch = 1;
-          window.speechSynthesis.speak(utterance);
+        window.speechSynthesis.cancel(); // Stop any previous speech
+        const utterance = new SpeechSynthesisUtterance(planInText);
+        utterance.rate = 1.05; // Slightly slower for better clarity
+        utterance.pitch = 1;
+        window.speechSynthesis.speak(utterance);
       }
     }
-   if(choice==3){
+    if (choice == 3) {
 
-     let prompt = "";
+      let prompt = "";
       const formData = JSON.parse(localStorage.getItem('latestFormData') || '{}');
-       console.log("parsed FOrm",formData)
-      if(dietPlan){
-        prompt=`Act as an expert fitness coach and nutritionist. Generate a personalized diet plan based on the following user profile:
+      console.log("parsed FOrm", formData)
+      if (dietPlan) {
+        prompt = `Act as an expert fitness coach and nutritionist. Generate a personalized diet plan based on the following user profile:
         ${JSON.stringify(formData, null, 2)}
         Act as an expert fitness coach and nutritionist. Generate a personalized diet plan based on the following user profile:
         **CRITICAL INSTRUCTION**: You must return ONLY valid JSON. Do not include markdown formatting like \`\`\`json or \`\`\`.
@@ -344,8 +368,8 @@ export default function WorkoutDietPlan({ plan, showFlowPreview = false }: Worko
         Ensure the workout matches the '${formData.fitnessLevel}' level and '${formData.workoutLocation}' location.
       Ensure the diet respects the '${formData.dietaryPreference}' preference.
         `
-      }else{
-        prompt=`Act as an expert fitness coach and nutritionist. Generate a personalized workout routine based on the following user profile:
+      } else {
+        prompt = `Act as an expert fitness coach and nutritionist. Generate a personalized workout routine based on the following user profile:
       ${JSON.stringify(formData, null, 2)}
 
       **CRITICAL INSTRUCTION**: You must return ONLY valid JSON. Do not include markdown formatting like \`\`\`json or \`\`\`.
@@ -363,8 +387,8 @@ export default function WorkoutDietPlan({ plan, showFlowPreview = false }: Worko
       Ensure the workout matches the '${formData.fitnessLevel}' level and '${formData.workoutLocation}' location.
       Ensure the diet respects the '${formData.dietaryPreference}' preference.
     `
-    }
-      try{
+      }
+      try {
         const response = await generateTextWithGemini(prompt);
         // Clean up potential markdown code blocks
         const cleanResponse = response.replace(/```json|```/g, '').trim();
@@ -373,10 +397,15 @@ export default function WorkoutDietPlan({ plan, showFlowPreview = false }: Worko
         setCurrentPlan(prev => {
           if (!prev) return null; // Safety check
           // Return a NEW object to trigger React's diffing engine
-          return {
+          const newPlan = {
             ...prev,
             [dietPlan ? 'diet_plan' : 'workout_routine']: parsed
           };
+
+          // Persist the updated plan
+          localStorage.setItem("currentPlan", JSON.stringify(newPlan));
+
+          return newPlan;
         });
       } catch (error) {
         console.error(error);
@@ -385,73 +414,43 @@ export default function WorkoutDietPlan({ plan, showFlowPreview = false }: Worko
       }
     }
   }
-  if(!currentPlan){
+  if (!currentPlan) {
     return (
-      <div className="grid gap-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-        <div className="rounded-[28px] border-2 border-foreground/40 bg-background/40 p-8 animate-in fade-in slide-in-from-left-4 duration-700 delay-100">
-          <div className="mb-6 flex items-center justify-between text-lg text-foreground/70">
-            <span className="font-semibold">Workout Plan</span>
-            <BubbleClusterIcons arrayVal={optionIcons} downloadAsPdf={downloadAsPdf} />
-          </div>
-          <div className="h-80 rounded-2xl border border-dotted border-foreground/30 bg-background/40 animate-pulse">
-          </div>
-        </div>
- 
-        <div className="flex flex-col rounded-[28px] border-2 border-foreground/40 bg-background/40 p-8 animate-in fade-in slide-in-from-right-4 duration-700 delay-200">
-          <div className="mb-6 flex items-center justify-between text-lg text-foreground/70">
-            <span className="font-semibold">Diet Plan</span>
-            <div className="flex gap-3">
-              <BubbleClusterIcons arrayVal={optionIcons} downloadAsPdf={downloadAsPdf}/>
-              {showFlowPreview && (
-                <span className="relative h-5 w-5 animate-bounce">
-                  <span className="absolute inset-0 -translate-y-5 -translate-x-2 rotate-45 border border-foreground/40" />
-                </span>
-              )}
-            </div>
-          </div>
- 
-          <div className="space-y-4">
-            {["Breakfast", "Lunch", "Dinner", "Snacks"].map((label, idx) => (
-              <div
-                key={label}
-                className="flex items-center justify-between rounded-2xl border border-dotted border-foreground/30 px-6 py-4 text-lg text-foreground/80 transition-all hover:border-foreground/60 hover:bg-foreground/5 animate-in fade-in slide-in-from-right-4"
-                style={{ animationDelay: `${300 + idx * 100}ms` }}
-              >
-                <span className="font-medium">{label}</span>
-                <Checkbox checked={false} />
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="w-full flex items-center justify-center py-20"
+      >
+        <Loader2 className="animate-spin text-emerald-500" size={48} />
+      </motion.div>
+    )
   }
 
   const getRoutineLines = (text: string) => {
-      if (!text) return [];
+    if (!text) return [];
 
-      // Scenario A: It's already a nice numbered list (Old format)
-      if (text.includes('\n') && /^\d+\./m.test(text)) {
-        return text.split('\n');
-      }
+    // Scenario A: It's already a nice numbered list (Old format)
+    if (text.includes('\n') && /^\d+\./m.test(text)) {
+      return text.split('\n');
+    }
 
-      // Scenario B: It's a paragraph (New format)
-      // Logic: We split by commas, but NOT commas inside parentheses (like "e.g., Planks")
-      // We also separate the "Title:" part from the rest.
-     
-      // 1. Extract Title (everything before the first colon)
-      const firstColonIndex = text.indexOf(':');
-      if (firstColonIndex === -1) return [text]; // Fallback
+    // Scenario B: It's a paragraph (New format)
+    // Logic: We split by commas, but NOT commas inside parentheses (like "e.g., Planks")
+    // We also separate the "Title:" part from the rest.
 
-      const title = text.slice(0, firstColonIndex + 1); // "Upper Body A (Focus):"
-      const content = text.slice(firstColonIndex + 1);  // " Barbell Press (...), Rows (...)"
+    // 1. Extract Title (everything before the first colon)
+    const firstColonIndex = text.indexOf(':');
+    if (firstColonIndex === -1) return [text]; // Fallback
 
-      // 2. Split the content by comma (ignoring commas inside parens)
-      // Regex explanation: Match comma only if it's NOT followed by a closing paren without an opening one
-      const exercises = content.split(/,(?![^(]*\))/).map(s => s.trim()).filter(Boolean);
-      return [title, ...exercises];
-    };
-  
+    const title = text.slice(0, firstColonIndex + 1); // "Upper Body A (Focus):"
+    const content = text.slice(firstColonIndex + 1);  // " Barbell Press (...), Rows (...)"
+
+    // 2. Split the content by comma (ignoring commas inside parens)
+    // Regex explanation: Match comma only if it's NOT followed by a closing paren without an opening one
+    const exercises = content.split(/,(?![^(]*\))/).map(s => s.trim()).filter(Boolean);
+    return [title, ...exercises];
+  };
+
 
   const getExerciseName = (line: string): string | null => {
     // Format 1: "1. Bench Press:"
@@ -466,122 +465,131 @@ export default function WorkoutDietPlan({ plan, showFlowPreview = false }: Worko
     }
     return null;
   };
-  const getMealName = (line: string): string | null => {
-    // Format 1: "1. Bench Press:"
-    let match = line.match(/^\s*\d+\.\s*([^:]+)/);
-    if (match) return match[1].trim();
-    // Format 2: "Bench Press (3 sets x 10 reps)"
-    // Capture text at the start until the first opening parenthesis '('
-    match = line.match(/^([^(]+)\s*\(/);
-    // Extra check: Ignore lines that end with ':' (These are titles, not exercises)
-    if (match && !line.trim().endsWith(':')) {
-      return match[1].trim();
-    }
-    return null;
-  };
-
-
 
   // 2. STATE: Track the specific exercise selected by the user
 
 
   return (
 
-    <div className="">
-        <div className="grid gap-8 h-full">
-          {/* --- WORKOUT SECTION --- */}
-          <div className="rounded-[28px] border-2 border-foreground/10 bg-background/40 p-8 animate-in fade-in slide-in-from-left-4 duration-700 delay-100 backdrop-blur-xl shadow-2xl flex flex-col">
+    <div className="relative">
+      {resetPlan && (
+        <motion.button
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          onClick={resetPlan}
+          className="absolute -top-12 right-0 flex items-center gap-2 px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-xl transition-all text-sm font-medium z-10"
+        >
+          <RotateCcw size={16} /> Start Over
+        </motion.button>
+      )}
 
-            <div className="mb-6 flex items-center justify-between text-lg text-foreground/70 shrink-0">
+      <div className="grid gap-8 h-full">
+        {/* --- WORKOUT SECTION --- */}
+        <motion.div
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.6 }}
+          className="rounded-[28px] border-2 border-foreground/10 bg-background/40 p-8 backdrop-blur-xl shadow-2xl flex flex-col"
+        >
 
-              <span className="font-semibold tracking-tight flex items-center gap-2">
+          <div className="mb-6 flex items-center justify-between text-lg text-foreground/70 shrink-0">
 
-                <Dumbbell className="text-emerald-400" size={20}/> Workout Plan
+            <span className="font-semibold tracking-tight flex items-center gap-2">
 
-              </span>
+              <Dumbbell className="text-emerald-400" size={20} /> Workout Plan
 
-              <BubbleClusterIcons arrayVal={optionIcons} downloadAsPdf={downloadAsPdf}/>
+            </span>
 
-            </div>
-
-          
-
-            <div className="h-120 overflow-y-auto pr-2 custom-scrollbar space-y-3">
-
-              {Object.entries(currentPlan.workout_routine || {}).map(([day, routine], idx) => (
-
-                <div
-
-                  key={day}
-
-                  onClick={()=>{setSelectedDay({day,routine})}}
-
-                  className="group relative rounded-2xl border border-foreground/10 bg-foreground/5 p-4 hover:bg-foreground/10 transition-all duration-300 hover:border-foreground/20"
-
-                  style={{ animationDelay: `${idx * 100}ms` }}
-
-                >
-
-                  <h4 className="text-emerald-400 font-medium text-sm uppercase tracking-wider mb-1">{day}</h4>
-
-                  <p className="text-foreground/80 text-sm leading-relaxed font-light">
-
-                    {routine}
-
-                  </p>
-
-                </div>
-
-              ))}
-
-            </div>
+            <BubbleClusterIcons arrayVal={optionIcons} downloadAsPdf={handleOptionClick} />
 
           </div>
-          {/* --- DIET SECTION --- */}
-          <div className=" flex flex-col rounded-[28px] border-2 border-foreground/10 bg-background/40 p-8 animate-in fade-in slide-in-from-right-4 duration-700 delay-200 backdrop-blur-xl shadow-2xl">
-            <div className="mb-6 flex items-center justify-between text-lg text-foreground/70 shrink-0">
-              <span className="font-semibold tracking-tight flex items-center gap-2">
-                <Utensils className="text-orange-400" size={20}/> Diet Plan
-              </span>
-              <div className="flex gap-3">
-                <BubbleClusterIcons arrayVal={optionIcons} downloadAsPdf={downloadAsPdf} dietPlan={true}/>
-                {showFlowPreview && (
-                  <span className="relative h-5 w-5 animate-bounce text-foreground/50">
-                    <ChevronDown />
-                  </span>
-                )}
-              </div>
-            </div>
-          
 
-            <div className="space-y-3 overflow-y-auto pr-2 custom-scrollbar">
-              {["Breakfast", "Lunch", "Dinner", "Snacks"].map((label, idx) => {
-                // Safe access using the interface
-                const mealKey = label.toLowerCase();
-                const mealContent = currentPlan.diet_plan?.[mealKey] || "No meal data available";
-              
-                // Render Sub-Component to allow useState
-                return (
-                  <DietRow
-                    setSelectedMeal={setSelectedMeal}
-                    key={label}
-                    label={label}
-                    content={mealContent}
-                    delay={300 + idx * 100}
-                  />
-                );
-              })}
-            </div>
-            {/* 3. THE MODAL (Abrupt Div) */}
+
+
+          <div className="h-120 overflow-y-auto pr-2 custom-scrollbar space-y-3">
+
+            {Object.entries(currentPlan.workout_routine || {}).map(([day, routine], idx) => (
+
+              <motion.div
+                key={day}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: idx * 0.1 }}
+                onClick={() => { setSelectedDay({ day, routine }) }}
+                className="group relative rounded-2xl border border-foreground/10 bg-foreground/5 p-4 hover:bg-foreground/10 transition-all duration-300 hover:border-foreground/20 cursor-pointer"
+              >
+
+                <h4 className="text-emerald-400 font-medium text-sm uppercase tracking-wider mb-1">{day}</h4>
+
+                <p className="text-foreground/80 text-sm leading-relaxed font-light line-clamp-2">
+
+                  {routine}
+
+                </p>
+
+              </motion.div>
+
+            ))}
+
           </div>
-          
-        </div>
+
+        </motion.div>
+        {/* --- DIET SECTION --- */}
+        <motion.div
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.6, delay: 0.2 }}
+          className="flex flex-col rounded-[28px] border-2 border-foreground/10 bg-background/40 p-8 backdrop-blur-xl shadow-2xl"
+        >
+          <div className="mb-6 flex items-center justify-between text-lg text-foreground/70 shrink-0">
+            <span className="font-semibold tracking-tight flex items-center gap-2">
+              <Utensils className="text-orange-400" size={20} /> Diet Plan
+            </span>
+            <div className="flex gap-3">
+              <BubbleClusterIcons arrayVal={optionIcons} downloadAsPdf={handleOptionClick} dietPlan={true} />
+              {showFlowPreview && (
+                <span className="relative h-5 w-5 animate-bounce text-foreground/50">
+                  <ChevronDown />
+                </span>
+              )}
+            </div>
+          </div>
+
+
+          <div className="space-y-3 overflow-y-auto pr-2 custom-scrollbar">
+            {["Breakfast", "Lunch", "Dinner", "Snacks"].map((label, idx) => {
+              // Safe access using the interface
+              const mealKey = label.toLowerCase();
+              const mealContent = currentPlan.diet_plan?.[mealKey] || "No meal data available";
+
+              // Render Sub-Component to allow useState
+              return (
+                <DietRow
+                  setSelectedMeal={setSelectedMeal}
+                  key={label}
+                  label={label}
+                  content={mealContent}
+                  delay={idx * 150}
+                />
+              );
+            })}
+          </div>
+        </motion.div>
+
+      </div>
+
+      {/* --- MEAL MODAL --- */}
+      {mounted && createPortal(
+        <AnimatePresence>
           {selectedMeal && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            
+
               {/* Backdrop */}
-              <div
-                className="absolute inset-0 bg-background/80 backdrop-blur-sm transition-opacity"
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 bg-background/80 backdrop-blur-sm"
                 onClick={() => {
                   setSelectedMeal(null);
                   setSelectedDish(null);
@@ -589,9 +597,14 @@ export default function WorkoutDietPlan({ plan, showFlowPreview = false }: Worko
               />
 
 
-             {/* Popup Content */}
-              <div className="relative w-full max-w-lg flex flex-col max-h-[85vh] transform overflow-hidden rounded-2xl border border-foreground/10 bg-background shadow-2xl animate-in fade-in zoom-in-95 duration-200 p-6">
-              
+              {/* Popup Content */}
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                className="relative w-full max-w-lg flex flex-col max-h-[85vh] transform overflow-hidden rounded-2xl border border-foreground/10 bg-background shadow-2xl p-6"
+              >
+
                 {/* Close Button */}
                 <div className="p-6 border-b border-foreground/5 shrink-0 flex justify-between items-start">
                   <div>
@@ -603,18 +616,18 @@ export default function WorkoutDietPlan({ plan, showFlowPreview = false }: Worko
                     </p>
                   </div>
                   <button
-                    onClick={() =>{
+                    onClick={() => {
                       setSelectedMeal(null)
                       setSelectedDish(null);
                     }}
-                  className="absolute right-4 top-4 text-foreground/40 hover:text-foreground transition-colors"
+                    className="absolute right-4 top-4 text-foreground/40 hover:text-foreground transition-colors"
                   >
                     <X size={20} />
                   </button>
                 </div>
 
                 {/* Header */}
-                
+
                 <div className="overflow-y-auto custom-scrollbar p-4 space-y-2">
                   {getRoutineLines(selectedMeal.content).map((line, idx) => {
                     // Check if this line is a valid exercise
@@ -642,7 +655,7 @@ export default function WorkoutDietPlan({ plan, showFlowPreview = false }: Worko
                               <CheckCircle size={16} className={isSelected ? 'fill-emerald-500/20' : ''} />
                             </div>
                           )}
-                    
+
                           {/* The Text */}
 
                           <span className={isSelected ? 'font-medium' : 'font-light'}>
@@ -655,92 +668,107 @@ export default function WorkoutDietPlan({ plan, showFlowPreview = false }: Worko
                 </div>
 
                 {/* Full Content */}
-                <div className={`
-                  p-4 border-t bg-background  border-foreground/10 transition-all duration-300 ease-in-out
-                  ${selectedDish ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-full hidden'}
-                `}>
-                  <div className="flex gap-3">
-                    <button
-                      onClick={() => {
-                        const query = `${selectedDish} recipe healthy easy`;
-                        window.open(`https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`, '_blank');
-                      }}
-                      className="flex-1 flex items-center justify-center gap-2 bg-[#FF0000]/10 hover:bg-[#FF0000]/20 text-[#FF0000] border border-[#FF0000]/20 py-2.5 rounded-lg transition-all font-medium text-sm"
+                <AnimatePresence>
+                  {selectedDish && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 20 }}
+                      className="p-4 border-t bg-background border-foreground/10"
                     >
-                      <Youtube size={18} /> Watch Video
-                    </button>
-                    <button
-                      disabled={isGenerating}
-                      onClick={async() => {
-                        setIsGenerating(true);
-                        setGeneratedImageDish(null);
+                      <div className="flex gap-3">
+                        <button
+                          onClick={() => {
+                            const query = `${selectedDish} recipe healthy easy`;
+                            window.open(`https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`, '_blank');
+                          }}
+                          className="flex-1 flex items-center justify-center gap-2 bg-[#FF0000]/10 hover:bg-[#FF0000]/20 text-[#FF0000] border border-[#FF0000]/20 py-2.5 rounded-lg transition-all font-medium text-sm"
+                        >
+                          <Youtube size={18} /> Watch Video
+                        </button>
+                        <button
+                          disabled={isGenerating}
+                          onClick={async () => {
+                            setIsGenerating(true);
+                            setGeneratedImageDish(null);
 
-                      try{
+                            try {
+                              const prompt = `
+                              Professional editorial food photography of a delicious and healthy dish: ${selectedDish}.
+                              Presentation: Michelin-star quality plating, elegant arrangement, appetizing and fresh.
+                              Setting: A high-end dark marble or slate table, cinematic atmosphere with soft steam rising.
+                              Lighting: Dramatic studio lighting, soft window light from the side, sharp focus on the food texture.
+                              Style: Macro food photography, 8k resolution, highly detailed, depth of field, photorealistic.
+                            `;
+                              const response = await generateImageWithGemini(prompt)
+                              if (response) {
+                                console.log(response)
+                                setGeneratedImageDish(response);
+                              } else {
+                                alert("Image generation failed. Please try again.");
+                              }
+                            } catch {
+                              console.error("Error generating image");
+                            } finally {
+                              setIsGenerating(false);
+                            }
+                          }}
+                          className="flex-1 flex items-center justify-center gap-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 py-2.5 rounded-lg transition-all font-medium text-sm"
+                        >
+                          <ImageIcon size={18} /> {isGenerating ? "Generating..." : "Generate Image"}
+                        </button>
+                      </div>
 
-                          const prompt = `
-                            Professional editorial food photography of a delicious and healthy dish: ${selectedDish}.
-                            Presentation: Michelin-star quality plating, elegant arrangement, appetizing and fresh.
-                            Setting: A high-end dark marble or slate table, cinematic atmosphere with soft steam rising.
-                            Lighting: Dramatic studio lighting, soft window light from the side, sharp focus on the food texture.
-                            Style: Macro food photography, 8k resolution, highly detailed, depth of field, photorealistic.
-                          `;
-                          const response = await generateImageWithGemini(prompt)
-                          if(response){
-                            console.log(response)
-                            setGeneratedImageDish(response);
-                          }else{
-                            alert("Image generation failed. Please try again.");
-                          }
-                        }catch{
-                          console.error("Error generating image");
-                        }finally{
-                          setIsGenerating(false);
-                        }
-                      }}
-                      className="flex-1 flex items-center justify-center gap-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 py-2.5 rounded-lg transition-all font-medium text-sm"
-                      >
-                    <ImageIcon size={18} /> {isGenerating ? "Generating..." : "Generate Image"}
-                    </button>
-                  </div>
-                </div>
+                      {generatedImageDish && (
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.9 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          className="w-full rounded-xl overflow-hidden border border-foreground/20 shadow-2xl mt-4"
+                        >
+                          <div className="relative aspect-video w-full">
+                            {isGenerating ? (
+                              <Skeleton className="h-[80%] w-[80%] rounded-full" />
+                            ) : (
+                              <img
+                                src={generatedImageDish}
+                                alt="AI Generated Dish"
+                                className="w-full h-full object-cover"
+                              />
+                            )}
 
-                {generatedImageDish && (
-                  <div className="w-full rounded-xl overflow-hidden border border-foreground/20 shadow-2xl animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    <div className="relative aspect-video w-full">
-                      {isGenerating?(
-                        <Skeleton className="h-[80%] w-[80%] rounded-full" />
-                      ):(
-                        <img
-                          src={generatedImageDish}
-                          alt="AI Generated Workout"
-                          className="w-full h-full object-cover"
-                        />
+                            {/* Optional: Download Button overlay */}
+                            <a
+                              href={generatedImageDish}
+                              download={`diet-${selectedDish}.png`}
+                              className="absolute bottom-3 right-3 bg-background/60 hover:bg-background/80 text-foreground px-3 py-1.5 rounded-lg text-xs backdrop-blur-md transition-colors flex items-center gap-2"
+                            >
+                              Download
+                            </a>
+                          </div>
+                        </motion.div>
                       )}
-                    
-                      {/* Optional: Download Button overlay */}
-                      <a
-                        href={generatedImageDish}
-                        download={`workout-${selectedDish}.png`}
-                        className="absolute bottom-3 right-3 bg-background/60 hover:bg-background/80 text-foreground px-3 py-1.5 rounded-lg text-xs backdrop-blur-md transition-colors flex items-center gap-2"
-                      >
-                        Download
-                      </a>
-                    </div>
-                  </div>
-                )}
-                
-                
-              </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+              </motion.div>
 
             </div>
           )}
+        </AnimatePresence>, document.body
+      )}
 
+      {/* --- WORKOUT MODAL --- */}
+      {mounted && createPortal(
+        <AnimatePresence>
           {selectedDay && (
-
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
               {/* Backdrop */}
-              <div
-                className="absolute inset-0 bg-background/80 backdrop-blur-sm transition-opacity"
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 bg-background/80 backdrop-blur-sm"
                 onClick={() => {
                   setSelectedDay(null);
                   setSelectedExercise(null); // Reset selection on close
@@ -748,7 +776,12 @@ export default function WorkoutDietPlan({ plan, showFlowPreview = false }: Worko
               />
 
               {/* Modal Container */}
-              <div className="relative w-full max-w-lg transform overflow-hidden rounded-2xl border border-foreground/10 bg-background p-6 shadow-2xl transition-all animate-in fade-in zoom-in-95 duration-200">
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                className="relative w-full max-w-lg flex flex-col max-h-[85vh] transform overflow-hidden rounded-2xl border border-foreground/10 bg-background p-6 shadow-2xl transition-all"
+              >
                 {/* Header Section */}
                 <div className="p-6 border-b border-foreground/5 shrink-0 flex justify-between items-start">
                   <div>
@@ -766,12 +799,12 @@ export default function WorkoutDietPlan({ plan, showFlowPreview = false }: Worko
                     }}
                     className="text-foreground/40 hover:text-foreground transition-colors"
                   >
-                  <X size={20} />
+                    <X size={20} />
                   </button>
                 </div>
 
                 {/* Scrollable List Section */}
-                <div className="overflow-y-auto custom-scrollbar p-4 space-y-2">
+                <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-2">
                   {getRoutineLines(selectedDay.routine).map((line, idx) => {
                     // Check if this line is a valid exercise
                     const exerciseName = getExerciseName(line);
@@ -782,7 +815,15 @@ export default function WorkoutDietPlan({ plan, showFlowPreview = false }: Worko
                       <div
                         key={idx}
                         onClick={() => {
-                          if (isSelectable) setSelectedExercise(exerciseName);
+                          if (isSelectable) {
+                            setSelectedExercise(exerciseName);
+                            // Check cache
+                            if (cachedImages[exerciseName]) {
+                              setGeneratedImage(cachedImages[exerciseName]);
+                            } else {
+                              setGeneratedImage(null);
+                            }
+                          }
                         }}
                         className={`
                           p-3 rounded-xl border transition-all duration-200 text-sm leading-relaxed
@@ -798,7 +839,7 @@ export default function WorkoutDietPlan({ plan, showFlowPreview = false }: Worko
                               <CheckCircle size={16} className={isSelected ? 'fill-emerald-500/20' : ''} />
                             </div>
                           )}
-                    
+
                           {/* The Text */}
 
                           <span className={isSelected ? 'font-medium' : 'font-light'}>
@@ -811,84 +852,103 @@ export default function WorkoutDietPlan({ plan, showFlowPreview = false }: Worko
                 </div>
 
                 {/* ACTION FOOTER - Only shows when an exercise is selected */}
-                <div className={`
-                  p-4 border-t border-foreground/10 bg-primary transition-all duration-300 ease-in-out
-                  ${selectedExercise ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-full hidden'}
-                `}>
-                  <div className="flex gap-3">
-                    <button
-                      onClick={() => {
-                        const query = `${selectedExercise} exercise tutorial`;
-                        window.open(`https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`, '_blank');
-                      }}
-                      className="flex-1 flex items-center justify-center gap-2 bg-[#FF0000]/10 hover:bg-[#FF0000]/20 text-[#FF0000] border border-[#FF0000]/20 py-2.5 rounded-lg transition-all font-medium text-sm"
+                <AnimatePresence>
+                  {selectedExercise && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 20 }}
+                      className="p-4 border-t border-foreground/10 bg-primary/5"
                     >
-                      <Youtube size={18} /> Watch Video
-                    </button>
-                    <button
-                      disabled={isGenerating}
-                      onClick={async() => {
-                        setIsGenerating(true);
-                        setGeneratedImage(null);
+                      <div className="flex gap-3">
+                        <button
+                          onClick={() => {
+                            const query = `${selectedExercise} exercise tutorial`;
+                            window.open(`https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`, '_blank');
+                          }}
+                          className="flex-1 flex items-center justify-center gap-2 bg-[#FF0000]/10 hover:bg-[#FF0000]/20 text-[#FF0000] border border-[#FF0000]/20 py-2.5 rounded-lg transition-all font-medium text-sm"
+                        >
+                          <Youtube size={18} /> Watch Video
+                        </button>
+                        <button
+                          disabled={isGenerating}
+                          onClick={async () => {
+                            setIsGenerating(true);
+                            setGeneratedImage(null);
 
-                      try{
+                            try {
+                              const prompt = `
+                              A professional, cinematic full-body photograph of a fit ${localStorage.getItem("age")} years old, ${localStorage.getItem("gender")} athlete performing the "${selectedExercise}" exercise with perfect form.                
+                              Setting: A modern, high-end gym with dark industrial aesthetics and neon accents.
+                              Lighting: Dramatic rim lighting highlighting muscle definition, soft volumetric fog, 8k resolution.
+                              Style: Photorealistic, highly detailed, sports photography, sharp focus, depth of field.
+                              `;
+                              const response = await generateImageWithGemini(prompt)
+                              if (response) {
+                                console.log(response)
+                                setGeneratedImage(response);
+                                // Save to cache
+                                const newCache = { ...cachedImages, [selectedExercise]: response };
+                                setCachedImages(newCache);
+                                localStorage.setItem("cached_images", JSON.stringify(newCache));
+                              } else {
+                                alert("Image generation failed. Please try again.");
+                              }
+                            } catch {
+                              console.error("Error generating image");
+                            } finally {
+                              setIsGenerating(false);
+                            }
+                          }}
+                          className="flex-1 flex items-center justify-center gap-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 py-2.5 rounded-lg transition-all font-medium text-sm"
+                        >
+                          <ImageIcon size={18} /> {isGenerating ? "Generating..." : "Generate Image"}
+                        </button>
+                      </div>
 
-                          const prompt = `
-                          A professional, cinematic full-body photograph of a fit ${localStorage.getItem("age")} years old, ${localStorage.getItem("gender")} athlete performing the "${selectedExercise}" exercise with perfect form.                
-                          Setting: A modern, high-end gym with dark industrial aesthetics and neon accents.
-                          Lighting: Dramatic rim lighting highlighting muscle definition, soft volumetric fog, 8k resolution.
-                          Style: Photorealistic, highly detailed, sports photography, sharp focus, depth of field.
-                          `;
-                          const response = await generateImageWithGemini(prompt)
-                          if(response){
-                            console.log(response)
-                            setGeneratedImage(response);
-                          }else{
-                            alert("Image generation failed. Please try again.");
-                          }
-                        }catch{
-                          console.error("Error generating image");
-                        }finally{
-                          setIsGenerating(false);
-                        }
-                      }}
-                      className="flex-1 flex items-center justify-center gap-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 py-2.5 rounded-lg transition-all font-medium text-sm"
-                      >
-                    <ImageIcon size={18} /> {isGenerating ? "Generating..." : "Generate Image"}
-                    </button>
+                      {(generatedImage || isGenerating) && (
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.9 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          className="w-full rounded-xl overflow-hidden border border-foreground/20 shadow-2xl mt-4"
+                        >
+                          <div className="relative aspect-video w-full bg-foreground/5">
+                            {isGenerating ? (
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                <Skeleton className="h-full w-full" />
+                                <div className="absolute inset-0 flex items-center justify-center flex-col gap-2 z-10">
+                                  <div className="animate-spin rounded-full h-8 w-8 border-2 border-emerald-500 border-t-transparent"></div>
+                                  <span className="text-xs text-foreground/60 font-medium animate-pulse">Creating masterpiece...</span>
+                                </div>
+                              </div>
+                            ) : (
+                              <>
+                                <img
+                                  src={generatedImage!}
+                                  alt="AI Generated Workout"
+                                  className="w-full h-full object-cover"
+                                />
+                                <a
+                                  href={generatedImage!}
+                                  download={`workout-${selectedExercise}.png`}
+                                  className="absolute bottom-3 right-3 bg-background/60 hover:bg-background/80 text-foreground px-3 py-1.5 rounded-lg text-xs backdrop-blur-md transition-colors flex items-center gap-2"
+                                >
+                                  Download
+                                </a>
+                              </>
+                            )}
+                          </div>
+                        </motion.div>
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
-                  </div>
-                </div>
-                {generatedImage && (
-                <div className="w-full rounded-xl overflow-hidden border border-foreground/20 shadow-2xl animate-in fade-in slide-in-from-bottom-4 duration-500">
-                  <div className="relative aspect-video w-full">
-                    {isGenerating?(
-                      <Skeleton className="h-[80%] w-[80%] rounded-full" />
-                    ):(
-                      <img
-                        src={generatedImage}
-                        alt="AI Generated Workout"
-                        className="w-full h-full object-cover"
-                      />
-                    )}
-                  
-                    {/* Optional: Download Button overlay */}
-                    <a
-                      href={generatedImage}
-                      download={`workout-${selectedExercise}.png`}
-                      className="absolute bottom-3 right-3 bg-background/60 hover:bg-background/80 text-foreground px-3 py-1.5 rounded-lg text-xs backdrop-blur-md transition-colors flex items-center gap-2"
-                    >
-                      Download
-                    </a>
-                  </div>
-                </div>
-              )}
-
-            </div>
-              {/* Image Result Area */}
-            
+              </motion.div>
             </div>
           )}
+        </AnimatePresence>, document.body
+      )}
     </div>
   );
 }

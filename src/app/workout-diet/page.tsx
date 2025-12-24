@@ -2,8 +2,20 @@
 
 import { BubbleCluster } from "@/components/ui";
 import WorkoutDietPlan from "@/components/WorkoutDietPlan";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
+import Cookies from "js-cookie";
 
 export default function WorkoutDietPage() {
+  const router = useRouter();
+
+  useEffect(() => {
+    const user = Cookies.get("loggedInUser");
+    if (!user) {
+      router.push("/");
+    }
+  }, [router]);
+
   return (
     <main className="min-h-screen bg-background] px-8 py-12 text-foreground">
       <div className="mx-auto w-full max-w-6xl animate-in fade-in slide-in-from-bottom-8 duration-1000">

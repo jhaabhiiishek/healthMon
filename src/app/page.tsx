@@ -5,7 +5,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Cookies from "js-cookie";
 import { useEffect, useState } from "react";
-import { ModeToggle } from "@/components/ui/trigger"; // Assuming you have a toggle component
+import { ModeToggle } from "@/components/ui/trigger";
+import { motion } from "framer-motion";
+import { generateDailyQuote } from "./actions";
+import { toast } from "sonner";
 
 const landingPageArray = [
   {
@@ -40,44 +43,28 @@ const landingPageArray = [
   }
 ];
 
-const GYM_QUOTES = [
-  "The only bad workout is the one that didn't happen.",
-  "Sore today, strong tomorrow.",
-  "Don't wish for it, work for it.",
-  "Your body can stand almost anything. It’s your mind that you have to convince.",
-  "Motivation is what gets you started. Habit is what keeps you going.",
-  "Success starts with self-discipline.",
-  "Sweat is just fat crying.",
-  "Respect your body. It’s the only one you get.",
-  "Focus on your goal. Don't look in any direction but ahead.",
-  "Pain is temporary. Quitting lasts forever.",
-  "Stronger than yesterday.",
-  "You don't find willpower, you create it.",
-  "Excuses don't burn calories.",
-  "Discipline is doing what needs to be done, even if you don't want to.",
-  "Fall in love with the process, and the results will come."
-];
-const getDailyQuote = () => {
-  const date = new Date();
-  // Create a unique seed for the day (e.g., 2023-10-27)
-  const dateString = date.toDateString();
-  
-  // Simple hash function to get a number from the string
-  let hash = 0;
-  for (let i = 0; i < dateString.length; i++) {
-    hash = dateString.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  
-  // Use absolute value of hash to pick an index
-  const index = Math.abs(hash) % GYM_QUOTES.length;
-  return GYM_QUOTES[index];
-};
 export default function LoginPage() {
   const router = useRouter();
   const [signUp, setSignUp] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const quote = getDailyQuote();
+  const [quote, setQuote] = useState("Your body is the only place you have to live.");
+
+  useEffect(() => {
+    async function loadQuote() {
+      const today = new Date().toDateString();
+      const storedQuote = localStorage.getItem(`dailyQuote_${today}`);
+
+      if (storedQuote) {
+        setQuote(storedQuote);
+      } else {
+        const newQuote = await generateDailyQuote();
+        setQuote(newQuote);
+        localStorage.setItem(`dailyQuote_${today}`, newQuote);
+      }
+    }
+    loadQuote();
+  }, []);
 
   const login = () => {
     const userCount = localStorage.getItem("userCount");
@@ -88,13 +75,13 @@ export default function LoginPage() {
       const user = JSON.parse(userStr);
       if (user.username === username && user.password === password) {
         Cookies.set("loggedInUser", username, { expires: 7 });
+        toast.success("Login successful! Welcome back.");
         router.push("/details");
         return;
       }
     }
+    toast.error("Invalid credentials. Please try again.");
   };
-
-  
 
   const signUpUser = () => {
     const userCount = localStorage.getItem("userCount");
@@ -105,50 +92,63 @@ export default function LoginPage() {
       password: password
     };
     localStorage.setItem(`user_${newCount}`, JSON.stringify(user));
+    toast.success("Account created successfully! Please login.");
     setSignUp(false);
     setUsername("");
     setPassword("");
   };
 
   return (
-    // 1. FIX: Changed bg-[#050505] to bg-background, text-white to text-foreground
-    <main className="min-h-screen bg-background  px-2 py-2 md:px-6 md:py-9 lg:px-8 lg:py-12 text-foreground flex items-center justify-center transition-colors duration-300">
-      <div className="w-full max-w-7xl animate-in fade-in slide-in-from-bottom-8 duration-1000">
-        
-        {/* 2. FIX: Used bg-card/bg-popover instead of radial gradients, removed hardcoded borders */}
+    <main className="min-h-screen bg-background px-2 py-2 md:px-6 md:py-9 lg:px-8 lg:py-12 text-foreground flex items-center justify-center transition-colors duration-300">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.8 }}
+        className="w-full max-w-7xl"
+      >
         <section className="rounded-[20px] md:rounded-[34px] border border-border bg-card/50 px-2 md:px-8 lg:px-10 py-4 md:py-9 lg:py-12 shadow-2xl backdrop-blur-sm dark:bg-[radial-gradient(circle_at_top,_#111,_#050505)]">
           <header className="mb-5 md:mb-10 flex items-center justify-between">
-            <h1 className=" text-xl md:text-2xl lg:text-3xl font-bold tracking-tight">HealthMon</h1>
-            <p className="text-sm italic hidden md:block text-slate-600 dark:text-slate-300 text-center ">
-              {quote}
-            </p>
-            {/* Optional: Add Theme Toggle here if you want to test it */}
+            <h1 className="text-xl md:text-2xl lg:text-3xl font-bold tracking-tight">HealthMon</h1>
+            <motion.p
+              key={quote}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.5 }}
+              className="text-sm italic hidden md:block text-slate-600 dark:text-slate-300 text-center"
+            >
+              "{quote}"
+            </motion.p>
             <div className="flex gap-4">
-                <ModeToggle/>
+              <ModeToggle />
             </div>
           </header>
 
           <p className="text-sm italic md:hidden text-slate-600 dark:text-slate-300 text-center mb-2.5">
-            {quote}
+            "{quote}"
           </p>
 
           <div className="grid gap-8 md:grid-cols-2">
-            {/* 3. FIX: Changed bg-black/40 to bg-muted/30 or bg-secondary */}
-            <div className="grid gap-4 rounded-[32px] border border-border bg-secondary/20 p-8 md:grid-cols-2 animate-in fade-in slide-in-from-left-4 duration-700 delay-200">
-              {landingPageArray.map((component) => (
-                <div
+            <div className="grid gap-4 rounded-[32px] border border-border bg-secondary/20 p-8 md:grid-cols-2">
+              {landingPageArray.map((component, index) => (
+                <motion.div
                   key={component.id}
-                  // 4. FIX: Changed border-white/35 to border-border and bg-white/5 to bg-card
-                  className="rounded-2xl border border-dashed border-border bg-card p-4 transition-all hover:border-primary/50 hover:bg-accent hover:shadow-lg animate-in fade-in zoom-in-95"
-                  style={{ animationDelay: `${300 + component.id * 50}ms` }}
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: 0.2 + (index * 0.1) }}
+                  className="rounded-2xl border border-dashed border-border bg-card p-4 transition-all hover:border-primary/50 hover:bg-accent hover:shadow-lg"
                 >
                   <h2 className="mb-2 text-lg font-semibold">{component.heading}</h2>
                   <p className="text-base text-muted-foreground">{component.desc}</p>
-                </div>
+                </motion.div>
               ))}
             </div>
 
-            <div className="rounded-[15px] md:rounded-[32px] border border-border bg-secondary/20 p-2 md:p-8 animate-in fade-in slide-in-from-right-4 duration-700 delay-300">
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.4, duration: 0.6 }}
+              className="rounded-[15px] md:rounded-[32px] border border-border bg-secondary/20 p-2 md:p-8"
+            >
               <div className="mb-3  md:mb-12 flex items-center justify-between text-3xl md:text-3xl text-muted-foreground">
                 <span className="font-light">Secure Access</span>
               </div>
@@ -156,7 +156,6 @@ export default function LoginPage() {
               <form className="flex flex-col gap-6 text-lg text-foreground">
                 <label className="space-y-1 md:space-y-3">
                   <span className="block font-medium">Username:</span>
-                  {/* 5. FIX: Changed input styles to use border-input and bg-background */}
                   <input
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
@@ -174,23 +173,24 @@ export default function LoginPage() {
                   />
                 </label>
 
-                <div
+                <motion.div
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
                   onClick={() => {
                     signUp ? signUpUser() : login();
                   }}
-                  // 6. FIX: Changed button styles to use bg-primary and text-primary-foreground
-                  className="cursor-pointer rounded-xl bg-primary border border-primary px-6 py-4 text-center text-primary-foreground font-medium transition-all hover:bg-primary/90 hover:scale-[1.02] active:scale-95 shadow-md"
+                  className="cursor-pointer rounded-xl bg-primary border border-primary px-6 py-4 text-center text-primary-foreground font-medium transition-all hover:bg-primary/90 shadow-md"
                 >
                   {signUp ? "Sign Up" : "Login"}
-                </div>
-                
+                </motion.div>
+
                 <Link
                   href="/details"
                   className="rounded-xl border border-input bg-secondary px-6 py-4 text-center text-secondary-foreground transition-all hover:bg-secondary/80 hover:scale-[1.02] active:scale-95"
                 >
                   Login with test credentials
                 </Link>
-                
+
                 <button
                   type="button"
                   onClick={() => setSignUp(!signUp)}
@@ -199,10 +199,10 @@ export default function LoginPage() {
                   {signUp ? "Login Instead" : "SignUp Instead"}
                 </button>
               </form>
-            </div>
+            </motion.div>
           </div>
         </section>
-      </div>
+      </motion.div>
     </main>
   );
 }
